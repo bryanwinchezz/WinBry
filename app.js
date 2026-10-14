@@ -42,7 +42,7 @@ const BRAND_MAP = {
     // DC: Soma DC Entertainment (9993) com DC Films (128064)
     'dc': { type: 'company', id: '9993|128064', title: 'Universo DC' },
 
-    // Estúdios e Canais (Mantidos)
+    // Estúdios e Redes de Produção
     'cartoon': { type: 'network', id: '56', title: 'Cartoon Network' },
     'adult': { type: 'network', id: '80', title: 'Adult Swim' },
     'disney': { type: 'company', id: '2', title: 'Disney' },
@@ -2438,6 +2438,13 @@ function openVideoModal(url) {
     const modal = document.getElementById('video-modal');
     const iframe = document.getElementById('video-iframe');
     if (modal && iframe) { 
+        // 1. Configura todas as permissões essenciais de tela cheia e mídia no iframe
+        // Isso resolve 100% dos erros de Permissions Policy ("fullscreen is not allowed in this document")
+        iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen');
+        iframe.setAttribute('allowfullscreen', 'true');
+        iframe.setAttribute('webkitallowfullscreen', 'true');
+        iframe.setAttribute('mozallowfullscreen', 'true');
+
         iframe.src = url; 
         modal.classList.add('show'); 
         
@@ -2447,10 +2454,145 @@ function openVideoModal(url) {
         if (bryiaBtn) bryiaBtn.style.display = 'none';
         if (surpriseBtn) surpriseBtn.style.display = 'none';
 
-        // Injeta dinamicamente o botão de Picture-in-Picture premium
+        // Injeta dinamicamente os controles avançados (Tela Cheia e Picture-in-Picture)
+        injectFullscreenButton();
         injectPipButton();
     }
 }
+
+function injectFullscreenButton() {
+    const modalContent = document.querySelector('.video-modal-content');
+    if (!modalContent || document.getElementById('btn-fullscreen-global')) return;
+
+    const fsBtn = document.createElement('button');
+    fsBtn.id = 'btn-fullscreen-global';
+    fsBtn.className = 'btn-fullscreen-custom';
+    fsBtn.title = "Tela Cheia (Expandir)";
+    fsBtn.innerHTML = '<i class="fas fa-expand"></i>';
+    
+    modalContent.appendChild(fsBtn);
+    fsBtn.onclick = togglePlayerFullscreen;
+
+    // Sincroniza ícone com o estado de tela cheia do navegador
+    if (!window.hasFullscreenChangeListener) {
+        window.hasFullscreenChangeListener = true;
+        const syncFullscreenIcon = () => {
+            const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+            const btn = document.getElementById('btn-fullscreen-global');
+            if (btn) {
+                if (isFs) {
+                    btn.classList.add('active');
+                    btn.title = "Sair da Tela Cheia";
+                    btn.innerHTML = '<i class="fas fa-compress"></i>';
+                } else {
+                    btn.classList.remove('active');
+                    btn.title = "Tela Cheia (Expandir)";
+                    btn.innerHTML = '<i class="fas fa-expand"></i>';
+                }
+            }
+        };
+
+        ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(ev => {
+            document.addEventListener(ev, syncFullscreenIcon);
+        });
+    }
+}
+
+function togglePlayerFullscreen() {
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+
+    if (isFs) {
+        // --- SAI DO FULLSCREEN ---
+        const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+        if (exit) {
+            exit.call(document).catch ? exit.call(document).catch(err => console.warn("Erro ao sair de tela cheia:", err)) : exit.call(document);
+        }
+        // Libera o lock de orientação ao sair do fullscreen
+        if (screen.orientation && screen.orientation.unlock) {
+            try { screen.orientation.unlock(); } catch(e) {}
+        }
+    } else {
+        // --- ENTRA NO FULLSCREEN ---
+        const modal = document.getElementById('video-modal');
+        const iframe = document.getElementById('video-iframe');
+        const videoWrapper = iframe ? (iframe.closest('.video-wrapper') || iframe.parentNode) : null;
+        const modalContent = document.querySelector('.video-modal-content');
+
+        // iOS Safari: não suporta Fullscreen API em divs. Usa webkitEnterFullscreen no <video> se disponível.
+        // Como temos iframe, a melhor solução é usar o modal inteiro com landscape lock.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        if (isIOS) {
+            // iOS: Simula fullscreen com CSS total (sem API nativa para divs no Safari iOS)
+            if (modal) {
+                modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100dvh;z-index:99999;background:#000;display:flex;';
+                if (modalContent) {
+                    modalContent.style.cssText = 'width:100%;height:100%;max-width:100%;max-height:100%;border-radius:0;';
+                }
+                // Tenta forçar landscape no iOS via orientação
+                try {
+                    if (screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock('landscape').catch(() => {});
+                    }
+                } catch(e) {}
+            }
+            // Sincroniza o ícone do botão manualmente para iOS
+            const btn = document.getElementById('btn-fullscreen-global');
+            if (btn) {
+                btn.classList.add('active');
+                btn.title = "Sair da Tela Cheia";
+                btn.innerHTML = '<i class="fas fa-compress"></i>';
+                btn.onclick = () => {
+                    // Desfaz o fullscreen iOS
+                    if (modal) modal.style.cssText = '';
+                    if (modalContent) modalContent.style.cssText = '';
+                    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e) {}
+                    btn.classList.remove('active');
+                    btn.title = "Tela Cheia (Expandir)";
+                    btn.innerHTML = '<i class="fas fa-expand"></i>';
+                    btn.onclick = togglePlayerFullscreen;
+                };
+            }
+            return;
+        }
+
+        // Escolhe o melhor elemento alvo em cascata: modal inteiro > wrapper > content
+        // O modal inteiro garante cobertura total da tela em TVs e desktop
+        const targets = [modal, modalContent, videoWrapper].filter(Boolean);
+        
+        let requested = false;
+        for (const target of targets) {
+            const requestFs = target.requestFullscreen || target.webkitRequestFullscreen || target.mozRequestFullScreen || target.msRequestFullscreen;
+            if (requestFs) {
+                try {
+                    const promise = requestFs.call(target, { navigationUI: 'hide' });
+                    requested = true;
+                    if (promise && promise.then) {
+                        promise.then(() => {
+                            // Após entrar em fullscreen, trava orientação em landscape no mobile
+                            if (window.innerWidth < 1024 && screen.orientation && screen.orientation.lock) {
+                                screen.orientation.lock('landscape').catch(() => {});
+                            }
+                        }).catch(err => {
+                            console.warn(`Fullscreen falhou em [${target.id || target.className}]:`, err);
+                            requested = false;
+                        });
+                    }
+                    break; // Para no primeiro que funcionar
+                } catch (err) {
+                    console.warn(`Exceção fullscreen em [${target.id || target.className}]:`, err);
+                    requested = false;
+                }
+            }
+        }
+
+        if (!requested) {
+            console.warn("Tela cheia não suportada neste navegador/plataforma.");
+            showToast("Tela cheia não disponível neste dispositivo.", "info");
+        }
+    }
+}
+
 function togglePictureInPicture() {
     const modal = document.getElementById('video-modal');
     const iframe = document.getElementById('video-iframe');
@@ -2549,6 +2691,16 @@ function closeVideoModal() {
     const modal = document.getElementById('video-modal');
     const iframe = document.getElementById('video-iframe');
     if (modal && iframe) { 
+        // Se estiver em tela cheia ao fechar o player, sai de tela cheia
+        if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+            try {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            } catch (e) {
+                console.warn("Erro ao sair de fullscreen ao fechar:", e);
+            }
+        }
+
         // Fecha janela PiP nativa do OS se estiver aberta
         if (window.pipWindowInstance) {
             window.pipWindowInstance.close();
@@ -2570,6 +2722,25 @@ function closeVideoModal() {
 function initVideoModal() {
     const close = document.getElementById('close-player');
     if (close) close.onclick = () => { closeVideoModal(); };
+
+    // Fecha ao clicar fora do conteúdo (no fundo escuro do modal)
+    const modal = document.getElementById('video-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeVideoModal();
+            }
+        });
+    }
+
+    // Tecla ESC fecha o modal se não estiver em tela cheia
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal && modal.classList.contains('show')) {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                closeVideoModal();
+            }
+        }
+    });
 }
 function initTheme() {
     const toggle = document.getElementById('theme-toggle');
@@ -4332,3 +4503,346 @@ async function loadAdultEasterEgg(page) {
         showToast("⚠️ Erro ao carregar o Multiverso Adulto.", "error");
     }
 }
+
+// =================================================================
+// SUPORTE COMPLETO PARA SMART TVs (Android TV, Samsung Tizen, LG WebOS)
+// Motor de Navegação D-Pad + Detecção Automática + Fullscreen Automático
+// =================================================================
+
+(function initTVSupport() {
+    'use strict';
+
+    // --- 1. DETECÇÃO DE AMBIENTE TV ---
+    function detectTVEnvironment() {
+        const ua = navigator.userAgent || '';
+        const isTizenTV = /Tizen/i.test(ua);          // Samsung Smart TV
+        const isWebOS = /WebOS|web0S/i.test(ua);       // LG Smart TV
+        const isAndroidTV = /Android TV|AFTT|AFTM|AFTB|AFTN|AFTS|CrKey/i.test(ua); // Android TV / Chromecast / FireTV
+        const isHbbTV = /HbbTV/i.test(ua);             // HbbTV (padrão europeu)
+        const isXbox = /Xbox/i.test(ua);               // Xbox Browser
+        const isPS = /PlayStation/i.test(ua);          // PlayStation Browser
+        const isMac = /Macintosh/i.test(ua) && navigator.maxTouchPoints === 0;
+        const isLargeScreen = window.innerWidth >= 1280 && window.innerHeight >= 720;
+
+        // Verifica pointer grosseiro (controle remoto/D-Pad)
+        const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const hasNoHover = window.matchMedia('(hover: none)').matches;
+
+        const isTV = isTizenTV || isWebOS || isAndroidTV || isHbbTV || isXbox || isPS ||
+                     (isLargeScreen && hasCoarsePointer && hasNoHover);
+
+        return {
+            isTV,
+            type: isTizenTV ? 'samsung' : isWebOS ? 'lg' : isAndroidTV ? 'android-tv' : isHbbTV ? 'hbbtv' : isXbox ? 'xbox' : isPS ? 'playstation' : 'generic-tv',
+        };
+    }
+
+    // --- 2. INICIALIZAÇÃO DO MODO TV ---
+    function enableTVMode() {
+        document.body.classList.add('tv-mode');
+        localStorage.setItem('winbry-tv-mode', '1');
+
+        // Cria badge visual "Modo TV"
+        if (!document.getElementById('tv-mode-badge')) {
+            const badge = document.createElement('div');
+            badge.id = 'tv-mode-badge';
+            badge.innerHTML = '<i class="fas fa-tv"></i> Modo TV';
+            badge.title = 'Navegação por D-Pad ativa. Use ←→↑↓ + Enter';
+            document.body.appendChild(badge);
+
+            // Some após 5 segundos
+            setTimeout(() => badge.style.opacity = '0', 4500);
+            setTimeout(() => badge.remove(), 5000);
+        }
+
+        // Cria hint de navegação
+        showTVNavigationHint();
+
+        // Torna todos os cards focáveis via teclado
+        makeFocusable();
+
+        // Inicia o motor D-Pad
+        initDPadNavigation();
+
+        console.log('[WinBry TV] Modo TV ativado.');
+    }
+
+    function disableTVMode() {
+        document.body.classList.remove('tv-mode');
+        localStorage.removeItem('winbry-tv-mode');
+        document.getElementById('tv-mode-badge')?.remove();
+        document.getElementById('tv-nav-hint')?.remove();
+        document.removeEventListener('keydown', handleDPad);
+    }
+
+    // --- 3. HINT DE NAVEGAÇÃO ---
+    let navHintTimer = null;
+    function showTVNavigationHint() {
+        const existing = document.getElementById('tv-nav-hint');
+        if (existing) { existing.remove(); clearTimeout(navHintTimer); }
+
+        const hint = document.createElement('div');
+        hint.id = 'tv-nav-hint';
+        hint.innerHTML = `
+            <i class="fas fa-tv"></i>
+            <span>Navegue com</span>
+            <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd>
+            <span>e confirme com</span>
+            <kbd>Enter</kbd>
+            <span>|</span>
+            <kbd>Esc</kbd> <span>para voltar</span>
+        `;
+        document.body.appendChild(hint);
+
+        navHintTimer = setTimeout(() => {
+            if (hint.parentNode) {
+                hint.style.opacity = '0';
+                hint.style.transition = 'opacity 0.5s ease';
+                setTimeout(() => hint.remove(), 500);
+            }
+        }, 4000);
+    }
+
+    // --- 4. TORNAR ELEMENTOS FOCÁVEIS ---
+    function makeFocusable() {
+        const selectors = [
+            '.content-card',
+            '.hub-item',
+            '.nav-item',
+            '.main-nav a',
+            '.tab-btn',
+            '.btn',
+            '.hero-arrow',
+            '.page-btn',
+            '.sort-btn',
+        ];
+
+        selectors.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+                if (!el.hasAttribute('tabindex')) {
+                    el.setAttribute('tabindex', '0');
+                }
+            });
+        });
+    }
+
+    // Reaplica focabilidade quando o DOM muda (cards carregados dinamicamente)
+    const focusObserver = new MutationObserver(() => {
+        if (document.body.classList.contains('tv-mode')) {
+            makeFocusable();
+        }
+    });
+    focusObserver.observe(document.body, { childList: true, subtree: true });
+
+    // --- 5. MOTOR D-PAD (Navegação Espacial) ---
+    let dpadInitialized = false;
+
+    function initDPadNavigation() {
+        if (dpadInitialized) return;
+        dpadInitialized = true;
+        document.addEventListener('keydown', handleDPad);
+    }
+
+    function handleDPad(e) {
+        const modal = document.getElementById('video-modal');
+        const isPlayerOpen = modal && modal.classList.contains('show');
+
+        // No player aberto: Escape fecha o player (ou sai de fullscreen)
+        if (isPlayerOpen) {
+            if (e.key === 'Escape' || e.key === 'GoBack' || e.keyCode === 10009) {
+                e.preventDefault();
+                // Se estiver em fullscreen, sai do fullscreen primeiro
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                    if (exit) exit.call(document);
+                } else {
+                    if (typeof closeVideoModal === 'function') closeVideoModal();
+                }
+            }
+            // Enter no player: ativa/desativa tela cheia
+            if (e.key === 'Enter' && !e.target.closest('.player-controls')) {
+                e.preventDefault();
+                if (typeof togglePlayerFullscreen === 'function') togglePlayerFullscreen();
+            }
+            return; // Não processa D-Pad de navegação com player aberto
+        }
+
+        // Teclas D-Pad para navegação pela página
+        const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+        if (!navKeys.includes(e.key)) return;
+
+        e.preventDefault();
+        showTVNavigationHint(); // Mostra hint brevemente ao pressionar
+
+        const focused = document.activeElement;
+
+        // Se nenhum elemento está focado, foca no primeiro card disponível
+        if (!focused || focused === document.body) {
+            const firstFocusable = document.querySelector('.content-card[tabindex], .main-nav a, .hub-item[tabindex]');
+            if (firstFocusable) firstFocusable.focus();
+            return;
+        }
+
+        // Encontra todos os elementos focáveis visíveis
+        const focusables = Array.from(document.querySelectorAll(
+            '.content-card[tabindex], .hub-item[tabindex], .main-nav a, .nav-item, .tab-btn[tabindex], .btn[tabindex], .hero-arrow, .sort-btn[tabindex], .page-btn[tabindex], .icon-btn'
+        )).filter(el => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && !el.hidden;
+        });
+
+        if (!focusables.length) return;
+
+        const currentRect = focused.getBoundingClientRect();
+        const currentCx = currentRect.left + currentRect.width / 2;
+        const currentCy = currentRect.top + currentRect.height / 2;
+
+        let bestEl = null;
+        let bestScore = Infinity;
+
+        focusables.forEach(el => {
+            if (el === focused) return;
+            const rect = el.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+
+            const dx = cx - currentCx;
+            const dy = cy - currentCy;
+
+            let inDirection = false;
+            let primary = 0;
+            let secondary = 0;
+
+            switch (e.key) {
+                case 'ArrowRight': inDirection = dx > 20;  primary = dx;  secondary = Math.abs(dy); break;
+                case 'ArrowLeft':  inDirection = dx < -20; primary = -dx; secondary = Math.abs(dy); break;
+                case 'ArrowDown':  inDirection = dy > 20;  primary = dy;  secondary = Math.abs(dx); break;
+                case 'ArrowUp':    inDirection = dy < -20; primary = -dy; secondary = Math.abs(dx); break;
+            }
+
+            if (!inDirection) return;
+
+            // Score: prioriza distância primária + penaliza distância secundária
+            const score = primary + secondary * 2.5;
+            if (score < bestScore) {
+                bestScore = score;
+                bestEl = el;
+            }
+        });
+
+        if (bestEl) {
+            bestEl.focus();
+            bestEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
+    // Enter para ativar o elemento focado (substitui click)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && document.body.classList.contains('tv-mode')) {
+            const focused = document.activeElement;
+            const modal = document.getElementById('video-modal');
+            const isPlayerOpen = modal && modal.classList.contains('show');
+
+            // Não processa se o player estiver aberto (já tratado acima)
+            if (isPlayerOpen) return;
+
+            if (focused && focused !== document.body && focused.tagName !== 'INPUT' && focused.tagName !== 'BUTTON') {
+                // Simula click nos cards e links
+                focused.click();
+            }
+        }
+    });
+
+    // --- 6. FULLSCREEN AUTOMÁTICO NO PLAYER PARA TV ---
+    function setupTVPlayerAutoFullscreen() {
+        // Quando o modal do player abrir em modo TV, vai direto pra fullscreen
+        const modal = document.getElementById('video-modal');
+        if (!modal) return;
+
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    const isTV = document.body.classList.contains('tv-mode');
+                    const isOpen = modal.classList.contains('show');
+
+                    if (isTV && isOpen) {
+                        // Pequeno delay para o iframe carregar antes de pedir fullscreen
+                        setTimeout(() => {
+                            if (typeof togglePlayerFullscreen === 'function') {
+                                const alreadyFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+                                if (!alreadyFs) {
+                                    togglePlayerFullscreen();
+                                }
+                            }
+                        }, 800);
+                    }
+                }
+            });
+        });
+
+        observer.observe(modal, { attributes: true });
+    }
+
+    // --- 7. MELHORIA DO PLAYER MOBILE: FULLSCREEN NATIVO NO TOQUE ---
+    function setupMobilePlayerImprovements() {
+        // Detecta toque duplo no player para entrar em fullscreen
+        const videoWrapper = document.querySelector('.video-wrapper');
+        if (!videoWrapper) return;
+
+        let lastTap = 0;
+        videoWrapper.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            const DOUBLE_TAP_DELAY = 300;
+            if (now - lastTap < DOUBLE_TAP_DELAY) {
+                // Duplo toque: toggle fullscreen
+                e.preventDefault();
+                if (typeof togglePlayerFullscreen === 'function') {
+                    togglePlayerFullscreen();
+                }
+            }
+            lastTap = now;
+        }, { passive: false });
+    }
+
+    // --- 8. INICIALIZAÇÃO PRINCIPAL ---
+    function init() {
+        const tvEnv = detectTVEnvironment();
+        const savedTVMode = localStorage.getItem('winbry-tv-mode') === '1';
+
+        // Ativa modo TV automaticamente em TVs ou se salvo manualmente
+        if (tvEnv.isTV || savedTVMode) {
+            enableTVMode();
+        }
+
+        // Configura fullscreen automático para TV
+        setupTVPlayerAutoFullscreen();
+
+        // Configura melhorias mobile
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            setupMobilePlayerImprovements();
+        }
+
+        // Toggle de modo TV via atalho: Shift+T (para testar em PC)
+        document.addEventListener('keydown', (e) => {
+            if (e.shiftKey && e.key === 'T') {
+                if (document.body.classList.contains('tv-mode')) {
+                    disableTVMode();
+                    showToast('Modo TV desativado.', 'info');
+                } else {
+                    enableTVMode();
+                    showToast('Modo TV ativado! Use ←→↑↓ para navegar.', 'success');
+                }
+            }
+        });
+
+        console.log(`[WinBry TV Support] Inicializado. TV detectada: ${tvEnv.isTV} (${tvEnv.type})`);
+    }
+
+    // Executa após o DOM estar pronto
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})(); // Fim do IIFE de suporte TV

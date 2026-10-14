@@ -3,10 +3,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>WinBry | Animes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.32.1/minified.js"></script>
-    <link rel="stylesheet" href="style.css?v=2026.05.22.1">
+    <link rel="stylesheet" href="style.css?v=2026.05.22.4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="icon" href="images/favicon.png" />
     <link rel="manifest" href="/manifest.json">
@@ -31,7 +31,6 @@
                     <li><a href="filmes.html">Filmes</a></li>
                     <li><a href="series.html">Séries</a></li>
                     <li><a href="animes.html" class="active">Animes</a></li>
-                    <li><a href="canais.html">Canais</a></li>
                 </ul>
             </nav>
             <div class="user-actions">
@@ -63,9 +62,14 @@
 
     <div id="video-modal" class="video-modal">
         <div class="video-modal-content">
-            <span id="close-player" class="close-btn">&times;</span>
-            <iframe id="video-iframe" width="100%" height="100%" src="" frameborder="0"
-                allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+            <div id="close-player" class="close-btn-custom" title="Fechar Vídeo">
+                <i class="fas fa-times"></i>
+            </div>
+            <div class="video-wrapper">
+                <iframe id="video-iframe" src="" frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                    allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"></iframe>
+            </div>
         </div>
     </div>
 
@@ -97,17 +101,13 @@
             <i class="fas fa-dragon"></i>
             <span>Animes</span>
         </a>
-        <a href="canais.html" class="nav-item">
-            <i class="fas fa-broadcast-tower"></i>
-            <span>Canais</span>
-        </a>
         <a href="formulario.html" class="nav-item">
             <i class="fas fa-comments"></i>
             <span>Pedir</span>
         </a>
     </nav>
 
-    <script src="app.js?v=2026.05.22.1"></script>
+    <script src="app.js?v=2026.05.22.4"></script>
 </body>
 
 </html>

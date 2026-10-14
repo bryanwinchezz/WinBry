@@ -571,7 +571,7 @@
                     if (arr && arr.length > 0) rawItems.push(...arr);
                 });
             } 
-            // 2. LÓGICA DE EMPRESAS OU REDES (Grandes Estúdios e Canais de TV)
+            // 2. LÓGICA DE EMPRESAS OU REDES (Grandes Estúdios e Produtoras)
             // Agora traz Filmes E Séries produzidos pelas produtoras de forma dinâmica
             else {
                 const numPages = 3;

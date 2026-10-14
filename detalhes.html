@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>WinBry | Detalhes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.32.1/minified.js"></script>
     <link rel="icon" href="images/favicon.png" />
@@ -30,7 +30,6 @@
                     <li><a href="filmes.html">Filmes</a></li>
                     <li><a href="series.html">Séries</a></li>
                     <li><a href="animes.html">Animes</a></li>
-                    <li><a href="canais.html">Canais</a></li>
                 </ul>
             </nav>
             <div class="user-actions">
@@ -60,8 +59,9 @@
             </div>
 
             <div class="video-wrapper">
-                <iframe id="video-iframe" src="" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture"
-                    allowfullscreen></iframe>
+                <iframe id="video-iframe" src="" frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                    allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"></iframe>
             </div>
 
             <div id="player-controls" class="player-controls">
@@ -148,10 +148,6 @@
         <a href="animes.html" class="nav-item">
             <i class="fas fa-dragon"></i>
             <span>Animes</span>
-        </a>
-        <a href="canais.html" class="nav-item">
-            <i class="fas fa-broadcast-tower"></i>
-            <span>Canais</span>
         </a>
         <a href="formulario.html" class="nav-item">
             <i class="fas fa-comments"></i>
